@@ -1,0 +1,625 @@
+##################################
+#   Ariel Ceron Gonzalez
+#   Servicio Social
+#   Queretaro, 2019
+#
+################################
+#COMENTARIOS##########33
+#
+#Pastel
+#Considerar el hueco generado para descartar
+#Reconstruir con ceros para evitar consideraralo
+#ix = np.where(V==algo)
+#A[ix]
+#np.any(A[ix])np.any(v2[ix])
+#Descripción,readme,reconstrucción
+########
+
+#some library
+import pandas as pd #Permite leer el CSV
+import numpy as np  #Permite trabajar con arreglos de pandas y usar nan
+import matplotlib.pyplot as plt #Permite graficar
+import os   #Permite interactuar con las rutas de la pc
+import math as mt # Permite hacer comparaciones logicas
+import csv
+from datetime import datetime
+import random
+from sortedcontainers import SortedList
+
+###############Funciones###############
+def toStr(value:int)->str:
+    """toStr Transforma un valor numérico en el conjunto de los enteros entre cero y dos, para devolver un carácter.
+    
+    Para conocer a qué conjunto pertenece cierto elemento del conjunto de datos, se les establece una etiqueta que, en principio es obtenida de forma numérica con el uso de una división y después es transformada a un carácter con el uso de esta función.
+    
+    Parameters
+    ----------
+    value : int
+        Valor entero entre cero y dos.
+    
+    Returns
+    -------
+    str
+        Valor string del conjunto [E,P,V]
+
+    Examples
+    --------
+        >>> num = 0
+        >>> strg = cmpy.toStr(num)
+        >>> print(strg)
+        E
+    """    
+    if value == 0:
+        return('E')
+    elif value == 1:
+        return('P')
+    elif value == 2:
+        return('V')
+
+def numNan(lista:list)->int:
+    """numNan Cuenta la cantidad de elementos NAN contenidos en una lista.
+    
+    Parameters
+    ----------
+    lista : list
+        Lista con elementos tipo NAN
+    
+    Returns
+    -------
+    int
+        Entrega la cantidad de elementos NAN en la lista.
+
+    Example
+    -------
+        >>> lista = [1,2,3,np.nan,4,5,np.nan,6,np.nan,np.nan,7,8,np.nan,9,10]
+        >>> numNan = cmpy.numNan(lista)
+        >>> print(numNan)
+        5
+    """    
+    contar = 0
+    for elemento in lista:
+        if mt.isnan(elemento):
+            contar+=1
+    return(contar)
+
+def creaMascara(h:int,tau:int,m:int)->list:
+    """getVMask Regresa una mascara de ceros y unos dados los parámetros h, tau, m
+    
+    Parameters
+    ----------
+    h : int
+        Número de ceros que tendrá el centro de la lista
+    tau : int
+        Frecuencia de aparición de los unos
+    m : int
+        2m es la cantidad de unos totales en la lista
+    
+    Returns
+    -------
+    list
+        Lista binaria [datos hueco datos]
+    
+    Example
+    -------
+    >>> h = 1
+    >>> m = 2
+    >>> tau = 3
+    >>> lista = cmpy.creaMascara(h,tau,m)
+    >>> print(lista)
+    [1, 0, 0, 1, 0, 1, 0, 0, 1]
+
+    """    
+    i = j = 0
+    tmp = list()
+    while(j != m):
+        if i%tau == 0:
+            tmp.append(1)
+            j+=1
+        else:
+            tmp.append(0)
+        i+=1
+    vH = [0 for k in range(h)]
+    return(tmp+vH+tmp)
+
+
+####Funciones Rodrigo
+def generateRandom(cummDist: list) -> int:
+    '''
+    Genera una variable aleatoria entre [1,len(cummDist)]
+    
+    Parameters:
+    -----------
+    
+    cummDist: list
+        Valid Cummulative Distribution
+        
+    Returns:
+    -------
+        
+    ts: int
+        random integer between [1,len(cummDist)]
+        
+    >>> np.add(1, 2)
+    3
+    
+    '''
+    s = np.random.uniform()
+    treshold = s>np.array(cummDist)
+    ts = np.sum(treshold)
+    return ts
+
+def simulateFailures(n: int, PD_1: list, PD_2: list) -> list:
+    '''
+    Esta funcion simula fallas en la captura de datos.
+    
+    
+    Parameters:
+    -----------
+    
+    n : int
+        Length of the time series
+        
+    PD_1: list
+        Cummulative distribution for failures (holes).
+        
+    PD_2: list
+        Cummulative distribution for continuum data.
+    
+    
+    Returns:
+    -------
+    
+    h : list
+        sequence of simmulated failures
+        
+    
+    Example:
+    --------
+
+    >>> n = 5
+    >>> f1 = [5,5]
+    >>> f2 = [5,5]
+    >>> H = simulateFailures(n,f1,f2)
+    >>> H
+    [0.0, 0.0, 1.0, 0.0, 1.0]
+    
+    
+    
+    '''
+    # Funcion sin nombre de distribucion acumulada normalizada 
+    
+    f = lambda x:  list(np.cumsum(x/np.sum(x)))
+    
+    #Generacion de acumulados para cada distribucion
+    
+    PD_1 = f(PD_1)
+    PD_2 = f(PD_2)
+    h = list()
+    
+    while len(h) < n:
+        
+        # generamos secuencia de datos contiguos (no fallas), de tamaño aleatorio
+        
+        ts = generateRandom(PD_1)
+        ones = np.ones(ts)
+        h.extend(ones)
+        
+        
+        
+        if len(h) < n:
+            
+            # generamos secuencia de datos faltantes (fallas), de tamaño aleatorio
+            
+            ts = generateRandom(PD_2)
+            zeros = np.zeros(ts)
+            h.extend(zeros)
+    
+    return h[:n]
+#######
+
+
+###############Objetos###############
+class Reconstruir(object):
+
+    def __init__(self):
+        """__init__ Constructor del objeto. El objeto inicia vacío, él contiene diferentes atributos que modificara y ordenará durante la manipulación de este objeto. El objeto contendrá un nombre que le identifique, una matriz numpy que contenga los datos y las fechas de registro, así como los datos que se vayan generando. Una bandera de lectura que nos permita conocer el estatus del objeto
+
+        Example
+        -------
+        >>> objeto = Reconstruir()
+        """        
+        self.name = None    #Nombre de los datos
+        self.dt = None      #Datos numéricos
+        self.flag = False   #Bandera de lectura
+        self.dic = None     #Diccionario de indices
+        self.len = None     #Tamaño del arreglo
+        self.nCol = None    #Número de columnas en la matriz
+        
+    def guardar(self):
+        """guardar Almacena un archivo CSV cuando se ha terminado de trabajar con el objeto
+        """        
+        #Creamos el encabezado del archivo
+        strname = ","
+        strname = strname.join(self.dic.keys())
+        #Ordenamos los datos en forma de columna
+        datos = np.array([np.array(xi.astype(str)) for xi in self.dt])
+        datos = datos.transpose()
+        print(datos)
+        #Generamos el archivo csv
+        name = self.name + '.csv'
+        fmt=['%s' for i in range(self.dt.shape[0])]
+        np.savetxt(name,datos,delimiter=",",fmt = fmt, header=strname,comments='')
+        #Información de generación
+        print("Archivo {}.csv generado".format(self.name))
+
+    def añadirCol(self, name:str, data:list):
+        """ Añade un elemento a la matriz con la que se trabaja, remplazando espacios faltantes por NAN y con una etiqueta
+        
+        Parameters
+        ----------
+        name : str
+            Nombre de la columna que almacenará los datos
+        data : list
+            Lista de elementos que harán de nueva columna
+        """        
+        #Verificamos el tamaño de los datos de entrada
+        if len(data) == self.len:
+            #Agregamos los nuevos datos si miden lo mismo
+            aux = self.dt.tolist()
+            aux.append(data)
+            self.dt = np.array(aux)
+        else:
+            #Creamos un vector de NAN de los datos faltantes
+            aux = np.zeros(self.len-len(data))
+            aux[:] = np.nan
+            data.extend(aux)
+            aux = self.dt.tolist()
+            aux.append(data)
+            self.dt = np.array(aux)
+        #Agregamos el nombre de la columna al diccionario de columnas
+        self.nCol += 1
+        self.dic[name+str(self.nCol)] = self.nCol
+        print("Datos {} agregados".format(name+str(self.nCol)))
+        
+
+    def vecS(self,vec:list,n:int)->list:
+        """vecS Regresa un vector n dimensional con elementos E,P,V; según el vector dado.
+        
+        Parameters
+        ----------
+        vec : list
+            Describe el porcentaje que debe cubrir cada letra dentro del arreglo
+        
+        Returns
+        -------
+        list
+            Lista n dimensional con elemento E,P,V
+
+        Example
+        -------
+            
+        """        
+        aux = 0         #Define el rango para generar el arreglo
+        v = np.ceil(n*(np.asarray(vec)/100))
+        #Definimos los rangos para el arreglo
+        #Creamos vectores según el tamaño generado
+        l = np.zeros(v[0].astype(int))
+        l1 = np.array([toStr(int(i)) for i in l])
+        l = np.ones(v[1].astype(int))
+        l2 = np.array([toStr(int(i)) for i in l])
+        l = np.ones(v[1].astype(int))*2
+        l3 = np.array([toStr(int(i)) for i in l])
+        aux = np.concatenate((l1,l2,l3),axis=None)
+        return(aux[:self.len])
+
+    def leer(self, name:str, data:list, date:list, vec:list = [50,25,25]):
+        """read Permite ingresar los datos a evaluar con el objeto. Se debe ingresar tres vectores de datos, los datos, las fechas relacionadas con los datos y la relación de datos que se quiera usar para entrenamiento, validación y prueba. Esta función rellena de parámetros al objeto.
+
+        Parameters
+        ----------
+        data : list
+            Lista de datos que se quieran analizar
+        date : list
+            Lista de fechas que se le pueda relacionar a cada dato
+        vec : list, optional
+            Vector que separa los datos en entrenamiento, validación y prueba, by default [50,25,25]
+
+        Example
+        -------
+            >>> objeto.read("Prueba",[0,1,2,3,4,5],[0,1,2,3,4,5])
+        """        
+        if len(data) == len(date):
+            self.name = name    #Asignación del nombre de los datos
+            self.dt = np.array([date,data,self.vecS(vec,len(data)).tolist()])   #Creación de la estructura de datos
+            self.flag = True    #Cambio de bandera de lectura
+            self.dic = {'Registro':0,'x_i':1,'S':2}     #Nombre de las columnas
+            self.len = len(data)
+            self.nCol = 2
+        else:
+            print("Datos no exportados.\n Revisa el tamaño de los arreglos de entrada.")
+
+    def validaIndices(self,nameCol:str,h:int,m:int,tau:float):
+
+        data = self.dt[self.dic[nameCol]]
+        if data.dtype == '<U32':
+            data = data.astype(np.float64)
+        mascara = creaMascara(h,tau,m)
+        n = np.round((len(mascara)-h)/2).astype(int)
+        indicesV = list()
+        for i in range(n,(len(data)-(h+n))):
+            v = np.asarray(data[i-n:i+h+n])
+            indices = np.where(np.asarray(mascara) == 1)
+            if not np.isnan(sum(v[indices])):
+                indicesV.append(i)
+        return(indicesV)
+
+    def indices(self,nameCol:str,typ:str) -> list:
+        """[summary]
+        
+        Arguments:
+            nameCol {str} -- [description]
+            typ {str} -- [description]
+        
+        Returns:
+            list -- [description]
+        """   
+        if typ == 'h':      #Verificamos qué esta buscando
+            if self.dt[self.dic[nameCol]].dtype == '<U32':
+                posD = np.where(np.isnan(self.dt[self.dic[nameCol]].astype(np.float64)) == True)[0] 
+            else:   
+                posD = np.where(np.isnan(self.dt[self.dic[nameCol]]) == True)[0]   #Obtenemos el vector de posiciones de los huecos
+        elif typ == 'd':
+            if (self.dt[self.dic[nameCol]].dtype == '<U32'):
+                posD = np.where(np.isnan(self.dt[self.dic[nameCol]].astype(np.float64)) == False)[0]
+            #posD = np.where(np.isnan(self.dt[self.dic[nameCol]].astype(np.float64)) == False)   
+            else:
+                posD = np.where(np.isnan(self.dt[self.dic[nameCol]]) == False)[0]   
+            #Obtenemos el vector de posiciones de los datos
+        else:
+            print("Tipo de busqueda erronea, verifique con d o h") 
+            return(False)
+        return(posD)
+
+    def contar(self, nameCol:str, typ:str = 'd') -> list:
+        """contar Cuenta la cantidad de elementos existentes o nulos que existan en la columna especificada.
+
+        Parameters
+        ----------
+        nameCol : str
+            Nombre de la columna sobre la cual se hará el conteo
+        typ : str, optional
+            Definición del tipo de busqueda d para datos, h para nulos, by default 'd'
+
+        Returns
+        -------
+        list
+            Regresa una matriz que especifica el inicio del dato encontrado y el número de elementos continuos con las mismas características.
+        """       
+        if self.flag:    #Verificamos que existan datos
+            if nameCol in self.dic:     #Verificamos que exista la columna
+                #obtenemos los indices
+                posD = self.indices(nameCol,typ)
+
+                contar = 1  #Cuenta los elementos continuos
+                vecSalida = list()  #Almacena las posiciones y la cantida
+                valMax = 0  #Almacena el valor del hueco máximo
+                acum = 0    #Almacena la cantidad total de elementos contados
+                posIni = 0
+                
+                #Empieza en uno porque inicio en uno despues, suponiendo que conozco qué tipo de elemento es el primer elemento
+                for indice in range(1,len(posD)):
+                    #Verifico que el indice anterior sea igual al que le sigue más uno
+                    if posD[indice - 1]+1 == posD[indice]:
+                        #En caso de que no haya contado nada aún, significa que no me he movido 
+                        if contar == 1:
+                            #Mi posición inicial debe ser uno antes por que inicie uno después
+                            posIni = posD[indice-1]
+                        #Agrego uno en la continuidad
+                        contar += 1
+                    #Si a mi número anterior no le sigue el número actual
+                    else:
+                        #Agrego el total de números contados y la posición inicial que tuve
+                        vecSalida.append([posIni,contar])
+                        #Sumo al acumulado
+                        acum += contar 
+                        #Verifico que sea el hueco más grande
+                        if contar > valMax:
+                            valMax = contar
+                        #Reinicio mis contadores y modifico la posición inicial
+                        contar = 1
+                        posIni = posD[indice]
+                        
+                #Agrego el último elemento registrado y verifico lo mismo
+                vecSalida.append([posIni,contar])
+                acum += contar 
+                if contar > valMax:
+                    valMax = contar
+                return(vecSalida,acum,valMax)
+
+            else:
+                print("No existe la columna ingresada")
+        else:
+            print("No se han introducido datos aún")
+    
+    def hist(self, typ:str, nameCol:str, All:bool = False)->list:
+        """A la vez que imprime un histograma de la densidad de huecos o datos, según la entrada, regresa una lista de elementos y sus cantidades
+
+        Parameters
+        ----------
+        typ : str
+            Define si se desea un histograma de datos o de huecos
+        nameCol : str
+            Define la columna sobre la cual se desea trabajar
+        All : bool, optional
+            Será True si se quiere mostrar todo el histograma, en caso contrario solo se mostrara una parte, by default False
+
+        Returns
+        -------
+        list
+            Regresa una tupla de elementos y la cantidad de elementos encontrados.
+        """        
+        if self.flag:
+            #Obtenemos la lista de posiciones y cantidades, así como el número máximo continuo encontrado
+            tupla = self.contar(nameCol,typ)
+            #Creamos una lista de elementos de tamaño máximo
+            hist = np.zeros(tupla[2]+1)
+
+            #Hago un histograma añadiendo uno en la posición donde haya un elemento
+            for item in tupla[0]:
+                hist[item[1]] += 1
+
+            if typ == 'h':
+                pltstrng = "Histograma de huecos"
+            else:
+                pltstrng = "Histograma de datos"
+
+            plt.figure()
+            x = list(range(len(hist)))
+            plt.bar(x,hist)
+            plt.title(pltstrng)
+            plt.xlabel("Tamaño")
+            plt.ylabel("Frecuencia")
+            plt.show()
+
+            return(np.array([np.asarray(x),hist]))
+        else:
+            print("No se han introducido datos")
+
+    def describe(self):
+        """describe el objeto con el que se esta trabajando, mostrando en pantalla los parámetros que definen al objeto, el nombre de las columnas, el histograma de los datos originales y la relación de datos que existe
+        """        
+        if self.flag:
+            labels = ["Datos","Huecos"]
+            sizes = [self.contar('x_i','d')[1],self.contar('x_i','h')[1]]
+            colors = ['green','red']
+
+            print("{} contienen {} elementos".format(self.name,self.len))
+            #print("Se tienen las siguientes columnas",self.dic.keys())
+            plt.pie(sizes, labels=labels, colors=colors,autopct='%1.1f%%')
+            plt.axis('equal')
+            plt.show()
+
+            self.hist('h','x_i')
+            self.hist('d','x_i')
+            
+        else:
+            print("No se han introducido datos")
+
+    def generadorHuecos(self, denH:list, denD:list,inicialTyp:str='d')->list:
+        """generadorHuecos A partir de una lista de densidades de huecos y de densidades de datos, se genera un vector de huecos y datos
+
+        Parameters
+        ----------
+        nombreCol : str
+            Nombre de la columna a generar
+        denH : list
+            Densidad de huecos
+        denD : list
+            Densidad de datos
+
+        Returns
+        -------
+        list
+            Regresa una lista con unos y nan
+        """        
+        #Elegimos qué lista va a ser la primera, empezar con huecos o con datos, en genral se empieza con datos
+        if inicialTyp == 'd':
+            #Creamos la primera lista de datos
+            aux = np.ones(denD[0])
+            flag = False
+            ih = 0
+            id = 1
+        elif inicialTyp == 'h':
+            #Creamos la primera lista de huecos
+            aux = np.zeros(denH[0])
+            aux[:] = np.nan
+            flag = True
+            ih = 1
+            id = 0
+        else:
+            return("Comando no identificado, intente d o h")
+
+        #Creamos una lista almenos tan grande como el tamaño de los datos totales
+        while len(aux) < self.len:
+            #Aseguramos que se vuelva a iniciar el recorrido por la lista.
+            if id >= len(denD) or ih >= len(denH):
+                id = ih = 0
+            #Usamos un if para cambiar entre datos y huecos
+            if flag:
+                aux = np.append(aux,np.ones(denD[id]),axis = None)
+                id += 1
+                flag = False
+            else:
+                aux2 = np.zeros(denH[ih])
+                aux2[:] = np.nan
+                aux = np.append(aux,aux2,axis = None)
+                ih += 1
+                flag = True
+
+        #Tomamos solo la cantidad de datos que queremos y agregamos en el archivo de datos
+        aux = aux[:self.len]
+        
+        self.añadirCol("HGV",aux)
+        return(aux)
+
+    def reconstruyeHuecos(self,nameCol:str,h:int,m:int,tau:float):
+        """Reconstruye los huecos de tamaño h, teniendo como parámetros de relleno h, tua 
+
+        Arguments:
+            nameCol {str} -- Nombre de la columna a rellenar
+            h {int} -- Tamaño del hueco a rellenar
+            m {int} -- Cantidad de unos en el vector de busqueda
+            tau {float} -- Frecuencia (tiene otro nombre pero no recuerdo)
+        """ 
+        #Siempre vamos a trabajar con nuestros datos
+        data = np.asarray(self.dt[self.dic['x_i']])
+        if data.dtype == '<U32':
+            data = data.astype(np.float64)
+        #Creamos la nueva lista
+        recList = np.zeros(self.len) 
+        
+        #Creamos una mascara con los datos de entrada
+        mascara = np.asarray(creaMascara(h,tau,m))
+
+        #Tamaño del vector mascara
+        n = int(np.round((len(mascara) - h)/2))
+
+        #Obtenemos los indices de los huecos
+        indicesHuecos = np.asarray(self.contar(nameCol,'h')[0])
+        idx = np.where(indicesHuecos[:,1]== h)[0]
+        indicesHuecos = list(indicesHuecos[idx,0].flat)
+        
+        #Obtenemos indices que puedan funcionarnos en TODOS los datos
+        indicesValidados = self.validaIndices(nameCol,h,m,tau)  
+
+        #Almacenamos los valores encontrados de forma ordenada
+        sl = SortedList()
+
+        #Obtenemos el vector a rellenar
+        for elemento in indicesHuecos:
+
+            #Buscamos los elementos más cercanos
+            v1 = data[int(elemento-n):int(elemento+n+h)]
+            #Variable para almacenar el valor nuevo
+            prom = 0
+
+            #Quitar de la lista de indices el elemento
+            indicesVal = np.delete(indicesValidados,np.where(np.asarray(indicesValidados)==elemento))
+
+            for i in indicesVal:
+                v2 = data[i-n:i+n+h]
+                V = v2[np.where(mascara ==1)] - v1[np.where(mascara ==1)]
+                V = V**2
+                V = np.sum(V)
+                sl.add((V,i))
+            
+            pn = 3
+            #Hacemos el promedio con los primeros diez
+            for j in range(pn):
+                prom += data[sl[j][1]]
+                prom = prom/pn
+            recList = np.insert(recList,elemento,prom)
+            
+        self.añadirCol("R{}h{}m{}t".format(h,m,tau),recList[:self.len])
+        print(len(recList))
+        return(recList[:self.len])

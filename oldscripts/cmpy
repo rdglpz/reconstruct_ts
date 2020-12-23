@@ -1,0 +1,767 @@
+##################################
+#   Ariel Ceron Gonzalez
+#   Servicio Social
+#   Queretaro, 2019
+#
+################################
+#COMENTARIOS##########33
+#
+#Pastel
+#Considerar el hueco generado para descartar
+#Reconstruir con ceros para evitar consideraralo
+#ix = np.where(V==algo)
+#A[ix]
+#np.any(A[ix])np.any(v2[ix])
+#Descripción,readme,reconstrucción
+#########3333#
+
+
+#some library
+import pandas as pd #Permite leer el CSV
+import numpy as np  #Permite trabajar con arreglos de pandas y usar nan
+import matplotlib.pyplot as plt #Permite graficar
+import os   #Permite interactuar con las rutas de la pc
+import math as mt # Permite hacer comparaciones logicas
+import csv
+from datetime import datetime
+import random
+from sortedcontainers import SortedList
+
+###############Funciones###############
+def toStr(value:int)->str:
+    """toStr Transforma un valor numérico en el conjunto de los enteros entre cero y dos, para devolver un carácter.
+    
+    Para conocer a qué conjunto pertenece cierto elemento del conjunto de datos, se les establece una etiqueta que, en principio es obtenida de forma numérica con el uso de una división y después es transformada a un carácter con el uso de esta función.
+    
+    Parameters
+    ----------
+    value : int
+        Valor entero entre cero y dos.
+    
+    Returns
+    -------
+    str
+        Valor string del conjunto [E,P,V]
+
+    Examples
+    --------
+        >>> num = 0
+        >>> strg = cmpy.toStr(num)
+        >>> print(strg)
+        E
+    """    
+    if value == 0:
+        return('E')
+    elif value == 1:
+        return('P')
+    elif value == 2:
+        return('V') 
+
+def numNan(lista:list)->int:
+    """numNan Cuenta la cantidad de elementos NAN contenidos en una lista.
+    
+    Parameters
+    ----------
+    lista : list
+        Lista con elementos tipo NAN
+    
+    Returns
+    -------
+    int
+        Entrega la cantidad de elementos NAN en la lista.
+
+    Example
+    -------
+        >>> lista = [1,2,3,np.nan,4,5,np.nan,6,np.nan,np.nan,7,8,np.nan,9,10]
+        >>> numNan = cmpy.numNan(lista)
+        >>> print(numNan)
+        5
+    """    
+    count = 0
+    for elemento in lista:
+        if mt.isnan(elemento):
+            count+=1
+    return(count)
+
+def getMask(h:int,tau:int,m:int)->list:
+    """getVMask Regresa una mascara de ceros y unos dados los parámetros h, tau, m
+    
+    Parameters
+    ----------
+    h : int
+        Número de ceros que tendrá el centro de la lista
+    tau : int
+        Frecuencia de aparición de los unos
+    m : int
+        2m es la cantidad de unos totales en la lista
+    
+    Returns
+    -------
+    list
+        Lista binaria [datos hueco datos]
+    
+    Example
+    -------
+    >>> h = 1
+    >>> m = 2
+    >>> tau = 3
+    >>> lista = cmpy.getMask(h,tau,m)
+    >>> print(lista)
+    [1, 0, 0, 1, 0, 1, 0, 0, 1]
+
+    """    
+    i = j = 0
+    tmp = list()
+    while(j != m):
+        if i%tau == 0:
+            tmp.append(1)
+            j+=1
+        else:
+            tmp.append(0)
+        i+=1
+    vH = [0 for k in range(h)]
+    return(tmp+vH+tmp)
+
+
+####Funciones Rodrigo
+def generateRandom(cummDist: list) -> int:
+    '''
+    Genera una variable aleatoria entre [1,len(cummDist)]
+    
+    Parameters:
+    -----------
+    
+    cummDist: list
+        Valid Cummulative Distribution
+        
+    Returns:
+    -------
+        
+    ts: int
+        random integer between [1,len(cummDist)]
+        
+    >>> np.add(1, 2)
+    3
+    
+    '''
+    s = np.random.uniform()
+    treshold = s>np.array(cummDist)
+    ts = np.sum(treshold)
+    return ts
+
+def simulateFailures(n: int, PD_1: list, PD_2: list) -> list:
+    '''
+    Esta funcion simula fallas en la captura de datos.
+    
+    
+    Parameters:
+    -----------
+    
+    n : int
+        Length of the time series
+        
+    PD_1: list
+        Cummulative distribution for failures (holes).
+        
+    PD_2: list
+        Cummulative distribution for continuum data.
+    
+    
+    Returns:
+    -------
+    
+    h : list
+        sequence of simmulated failures
+        
+    
+    Example:
+    --------
+
+    >>> n = 5
+    >>> f1 = [5,5]
+    >>> f2 = [5,5]
+    >>> H = simulateFailures(n,f1,f2)
+    >>> H
+    [0.0, 0.0, 1.0, 0.0, 1.0]
+    
+    
+    
+    '''
+    # Funcion sin nombre de distribucion acumulada normalizada 
+    
+    f = lambda x:  list(np.cumsum(x/np.sum(x)))
+    
+    #Generacion de acumulados para cada distribucion
+    
+    PD_1 = f(PD_1)
+    PD_2 = f(PD_2)
+    h = list()
+    
+    while len(h) < n:
+        
+        # generamos secuencia de datos contiguos (no fallas), de tamaño aleatorio
+        
+        ts = generateRandom(PD_1)
+        ones = np.ones(ts)
+        h.extend(ones)
+        
+        
+        
+        if len(h) < n:
+            
+            # generamos secuencia de datos faltantes (fallas), de tamaño aleatorio
+            
+            ts = generateRandom(PD_2)
+            zeros = np.zeros(ts)
+            h.extend(zeros)
+    
+    return h[:n]
+#######
+
+
+###############Objetos###############
+class toReconst(object):
+    
+    def __init__(self):
+        self.dt = None      #Guarda el contenido del archivo 
+        self.name = None    #Guarda el nombre del archivo
+        #Banderas que definen el tipo de archivo que se ha almacenado
+        self.frdf = None     #Bandera de lectura de archivo
+        self.ffile = None
+        
+    def read_dt(self, name:str,data:list, date:list = [],v:list = [50,25,25] ):
+        """read_dt Permite la lectura de datos generados y almacenados en forma de lista
+        
+        Parameters
+        ----------
+        name : str
+            Nombre de los datos
+        data : str
+            Lista de datos
+        date : bool, optional
+            Lista de fechas, by default False
+
+        Example
+        -------
+        >>> dataLorenz = lorenz.generateLorenz()
+        >>> print(dataLorenz)
+        [0.    0.2   0.356 ... 0.    0.    0.   ]
+        >>> prueba = cmpy.Data2Object()
+        >>> prueba.read_dt('Lorenz',dataLorenz)
+        Datos exportados"""       
+        try:
+            if not date:
+                print("First input")
+                self.dt = [[i for i in range(len(data))],data]
+                self.frdf = True
+                self.ffile = False
+                self.name = name
+                self.dt = self.exp2csv_dt(name,v)
+
+            else:
+                if len(date) == len(data):
+                    print("Second input")
+                    self.dt = [date, data]
+                    self.frdf = True
+                    self.ffile = False
+                    self.name = name
+                    self.dt = self.exp2csv_dt(name,v)
+                    
+                else:
+                    print("Los datos ingresados son de diferentes tamaños")
+        except:
+                self.frdf = False
+                print("Datos no exportados")
+
+    def write_csv(self, file:object, data:list):
+        """write_csv Escribe contenido en un objeto tipo file
+   
+        Parameters
+        ----------
+        file : object
+            Objeto file donde se almacenarán los datos
+        data : list
+            Lista de 4 elementos que se incluirá en el documento.
+        """        
+        file.write('{},{},{}\n'.format(data[0],data[1],data[2]))
+
+
+    def exp2csv_dt(self,name, v:list = [50,25,25],n:int = 0)->object:
+        """exp2csv_dt Exporta los datos importados con la función read_dt
+        
+        Parameters
+        ----------
+        fname : str
+            Nombre de la estación a exportar
+        v : list, optional
+            Porcentaje de datos que serán tomados como entrenamiento, prueba y validación, en ese orden by default [50,25,25]
+        n : int, optional
+            Permite tomar los n primeros elementos, by default 0
+        
+        Returns
+        -------
+        object
+            Un data frame con estructura especificada 
+        """        
+ 
+               
+        if (n == 0):
+            n = len(self.dt[0])
+
+        file = open('./CSVfiles/f_%s.csv'%name,'w')
+        #Se asigna a la primera linea el encabezado
+        file.write('date,x_i,S\n')
+        print('Exportando datos del archivo con el nombre %s'%name)
+
+        aux = 0
+
+        for i in range(len(v)): #Obtiene el valor definido de cada conjunto
+            s = toStr(i)
+            #print(aux,aux+round(n*(v[i]/100))-1)
+            for elemento in range(aux,aux+round(n*(v[i]/100))-1): #Especifica el tañamo del conjunto
+                
+                self.write_csv(file,[self.dt[0][elemento],
+                            self.dt[1][elemento],s])
+            aux += round(n*(v[i]/100)) # Modifica la posición
+
+            #Informa la finalizacción
+        print('Datos exportados')
+        file.close() #Cierra el archivo
+        print('Archivo f_%s creado'%name) #informa de la creación
+
+        return(pd.read_csv('./CSVfiles/f_%s.csv'%name))
+
+
+
+    def read_csv(self,estacion:str):
+        """read_csv Importa archivos provenientes de un csv ubicados en ./CSVfiles
+        
+        Parameters
+        ----------
+        estacion : str
+            Nombre de la estación a importar
+        
+        Example
+        -------
+        >>> estaciones = prueba.keys()
+        >>> cdmx.read_csv(estaciones[0])
+        Archivo leido
+        """        
+        try:
+            self.dt = pd.read_csv('./CSVfiles/f_%s.csv'%estacion)
+            self.name = estacion
+            self.frdf = False
+            self.ffile = True   #Bandera de que existe un archivo
+            print('Archivo leido')
+        except:
+            self.frdf = False
+            print('Falló en la exportación')
+    
+
+    def count_h(self,nameCol:str = 'x_i')->object:
+        """count_h Cuenta los huecos que existen en una columna existente del archivo
+        
+        Parameters
+        ----------
+        nameCol : str, optional
+            Nombre de la columna a contar, by default 'isNull'
+        
+        Returns
+        -------
+        object
+            DataFrame que contiene el indice de inicio del hueco y la cantidad de huecos contados
+
+        Example
+        -------
+        >>> huecos = cdmx.count_h()
+        >>> print(huecos)
+            posIni  numHuecos
+        0          0        240
+        1        288        240
+        2        544          1
+        3        553          6
+        4        568          1
+        ...      ...        ...
+        3827  288838          3
+        3828  288886          9
+        3829  288910          3
+        3830  288982         24
+        3831  289126          3
+
+        [3832 rows x 2 columns]
+        """        
+        #Variables auxiliares para obtener la cantidad de huecos y la posición inicial donde se encuentra el hueco 
+        posIni = 0
+        numH = 0
+
+        listnum = list()
+        listpos = list()
+        headstr = ['posIni','numHuecos']
+
+        if self.frdf or self.ffile:
+            #Obtenemos la lista de booleanos que tiene el formato
+            if nameCol == "x_i":
+                lbool = np.isnan(self.dt[nameCol].tolist()) 
+            else:
+                lbool = self.dt[nameCol].tolist()
+            n = self.dt.shape[0]
+            #Revisa en todos los datos
+            for item in range(n):
+                if lbool[item]:#Se revisa en la lista aquellos que son nulos
+                    if numH == 0:
+                        posIni = item
+                        numH += 1
+                    else:
+                        numH += 1
+                else:
+                    if numH != 0:
+                        listnum.append(numH)
+                        listpos.append(posIni)
+                        numH = 0
+                        posIni = 0
+            if numH != 0:
+                listnum.append(numH)
+                listpos.append(posIni)
+                numH = 0
+                posIni = 0
+            d = list(zip(listpos,listnum))
+            df = pd.DataFrame(d, columns = headstr)
+            return(df)                    
+        else:
+            print("No se han ingresado datos")
+
+    def count_d(self,nameCol:str='x_i')->object:
+        """count_d Cuenta los datos que existen en una columna existente del archivo
+        
+        Parameters
+        ----------
+        nameCol : str, optional
+            Nombre de la columna a contar, by default 'isNull'
+        Returns
+        -------
+        object
+            DataFrame que contiene el indice inicial de los datos y la cantidad de datos que conto
+
+        Example
+        -------
+        >>> datos = cdmx.count_d()
+        >>> print(datos)
+               posIni  numDatos
+        0        240        48
+        1        528        16
+        2        545         8
+        3        559         9
+        4        569         7
+        ...      ...       ...
+        3827  288841        45
+        3828  288895        15
+        3829  288913        69
+        3830  289006       120
+        3831  289129       140
+
+        [3832 rows x 2 columns]
+        """       
+        #Variables auxiliares para obtener la cantidad de huecos y la posición inicial donde se encuentra el hueco 
+        posIni = 0
+        numD = 0
+
+        listnum = list()
+        listpos = list()
+        headstr = ['posIni','numDatos']
+
+        if self.frdf or self.ffile:
+            #Obtenemos la lista de booleanos que tiene el formato
+            if nameCol == "x_i":
+                lbool = np.isnan(self.dt[nameCol].tolist()) 
+            else:
+                lbool = self.dt[nameCol].tolist()
+            n = self.dt.shape[0]
+            for item in range(n):
+                if not lbool[item]: #Busca los datos que no son nulos
+                    if numD == 0:
+                        posIni = item
+                        numD += 1
+                    else:
+                        numD += 1
+                else:
+                    if numD != 0:
+                        listnum.append(numD)
+                        listpos.append(posIni)
+                        numD = 0
+                        posIni = 0
+            #Verifica que todos los datos se almecen en las lista de numeros y posiciones
+            if numD != 0:
+                listnum.append(numD)
+                listpos.append(posIni)
+                numD = 0
+                posIni = 0
+            #Crea un DataFrame y lo retorna
+            d = list(zip(listpos,listnum))
+            df = pd.DataFrame(d, columns = headstr)
+            return(df)                    
+        else:
+            print("No se han ingresado datos")
+
+    def hist(self, data:str = 'h',nameCol:str = "x_i",num:int = 10,getData:bool = False)->tuple:
+        """hist Imprime el histograma de los datos encontrados
+        
+        Parameters
+        ----------
+        data : str, optional
+            Define qué tipos de datos serán exportados, by default 'h'
+        num : int, optional
+            Indica el porcentaje de datos que serán visualizados, by default 30
+        getData : bool, optional
+            Inidca si queremos o no obtener datos de salida, by default False
+        
+        Returns
+        -------
+        tuple
+            Clasificación de los elementos y cantidad de datos
+        [Figure]
+
+        Example
+        -------
+        >>> cdmx.hist()
+
+        """        
+        #Dependiendo que histograma se quiera, se dará el histograma de huecos o de datos
+        if data == 'h':
+            df = self.count_h(nameCol)
+            #Obtenemos el histograma
+            #bins range(1,maxnumhuecos)
+            n,bins,na = plt.hist(df.numHuecos.tolist(),max(df.numHuecos.tolist()))
+            plt.close()
+            titlestr = "Histograma de Huecos"
+        elif data == 'd':
+            df = self.count_d(nameCol)
+            #Obtenemso el histograma
+            n,bins,na= plt.hist(df.numDatos.tolist(),max(df.numDatos.tolist()))
+            plt.close()
+            titlestr = "Histograma de Datos"
+        #Imprimimos el histograma con los datos obtenidos arriba
+        plt.figure()
+        #num = round((len(bins)/100)*num)
+        plt.bar(bins[:num],n[:num])
+        plt.title(titlestr)
+        plt.xlabel("Bins")
+        plt.ylabel("n")
+        plt.show()
+
+        if getData:
+            return(bins,n)
+
+    def add_col(self,name:str,data:list):
+        """add_col Agrega contenido al DataFrame con el que se trabaja
+        
+        Parameters
+        ----------
+        name : str
+            Nombre de la nueva columna
+        data : list
+            Datos que se desea ingresar
+        """        
+        self.dt[name] = data
+        print("Datos agregados")
+
+    def exp2csv(self):
+        """Actualiza el archivo csv o se crea un nuevo archivo"""
+        if self.frdf:
+            if self.ffile:
+                #Si existe el archivo
+                print("Actualizando archvio f_%s"%self.name)
+                self.dt.to_csv('./CSVfiles/f_%s.csv'%self.name)
+            else:
+                print("Se creara archivo f_%s"%self.name)
+                self.dt.to_csv('./CSVfiles/f_%s.csv'%self.name)
+
+    def genFail(self,nameCol:str,denH:list,denD:list) -> list:
+        """genFail Genera huecos y los agrega a una nueva columna del archivo con el que se trabaja tomando como parámetro 0 si es dato y 1 si es hueco
+        
+        Parameters
+        ----------
+        denH : list
+            Lista numérica que asigna la cantidad de huecos
+        denD : list
+            Lista numérica que asigna la cantidad de datos
+
+        Example
+        -------
+        >>> huecos = huecos.numHuecos.tolist()
+        >>> datos = datos.numDatos.tolist()
+        >>> cdmx.genFail(huecos,datos)
+        Datos agregados
+        """       
+        #Variables
+        count = 0   #contador
+        indexh = 0  #Indice de hueco
+        indexd = 0  #Indice de datos    
+        flag = True #Bandera
+        vtmp = list()   #Lista
+        #Recorremos todo el vector de datos
+        while(count < self.dt.shape[0]):
+            #Vamos a saltar entre verdad y falcedad de la bandera para poner huecos o datos
+            if flag:
+                #Coloca falsos en la lista
+                tmp = np.zeros(denH[indexh]).tolist()
+                vtmp.extend(tmp)
+                count += len(tmp)
+                #print("if",indexh)
+                indexh += 1
+                flag = False
+
+            else:
+                #Coloca verdaderos en la lista
+                tmp = np.ones(denD[indexd]).tolist()
+                vtmp.extend(tmp)
+                count += len(tmp)
+                #print("else",indexd)
+                indexd += 1
+                flag = True
+        #Aagregamos el vector que creamos en los datos
+        self.add_col(nameCol,vtmp[:self.dt.shape[0]])
+        #return(vtmp[:self.dt.shape[0]])
+        
+    def getHole(self,h:int,tau:int,m:int,nameCol:str) -> list:
+        """getHole Regresa una lista de posiciones de huecos que cumplen la nula existencia de elementos NAN según los parámetros h, tau, m
+        
+        Parameters
+        ----------
+        h : int
+            Tamaño del hueco central
+        tau : int
+            Tiempo de retardo
+        m : int 
+            Cantidad de unos esperados
+        nameCol : str, optional
+            Nombre de la columna que se lees, by default 'x_i'
+        
+        Returns
+        -------
+        list
+            Lista de posiciones 
+
+        Example
+        -------
+        >>> h = 1
+        >>> m = 2
+        >>> tau = 1
+        >>> listH = cdmx.getHole(h,tau,m)
+        >>> print(listH)
+        [544, 568, 848, 1436, 2267, 6590, 8792, 8802, 8807, 8822, 8827, 9497, 9516, 9658, 9670, 9786, 9903, 9917, 9947, 10215, 10247, 10488, 10672, 10794, 10798, 10808, 10937, 11359, 11418, 11514, 11619, 11685, 11688, 11702, 11814, 11936, 11938, 11940, 11983, 12244, 12399, 12405, 12753, 13116, 13124, 13128, 13142, 13393, 13428, 14839, 15536, 15886, 16555, 16674, 16735, 17066, 17091, 17093, 17095, 17106, 17364, 17582, 18060, 18393, 18836, 18856, 19161, 19338, 19430, 19432, 19556, 19623, 19627, 19652, 19668, 19956, 20036, 20138, 20245,...,]
+        """      
+        df = self.count_h(nameCol=nameCol) #Obtenemos las posiciones de los huecos
+        ltmp = df.loc[df.loc[:,'numHuecos'] == h,:] #filtramos las posiciones donde se encuentre los huecos de tamaño h
+        
+        ltmp = ltmp.posIni.tolist()
+        msk = getMask(h,tau,m) #Obtenemos una mascara de elementos
+        n = int((len(msk)-h)/2)  #Obtenemos el tamaño de un lado de la mascara
+
+        vecFinal = list()   #Crea una lista para guardar el vector de huecos
+        i = k = 0   #Contadores, i para el tamaño de la mascara, k para el tamaño del vector de huecos
+
+        #Recorremos hasta que se vacie la lista
+        while(k != len(ltmp)):
+            #Toma el vector de huecos del mismo tamaño que la mascara
+            vtmp = self.dt[nameCol][ltmp[k]-n:ltmp[k]+h+n].tolist()
+            if nameCol == "x_i":
+                vtmp = np.isnan(vtmp)
+            
+            #Verificamos que i sea verdadero
+            if msk[i]:
+                if vtmp[i]:
+                    k += 1
+                    i = 0
+                else:   
+                    #Verificamos que i sea menor que el tamaño de la mascara
+                    if i < len(msk):
+                        #Agregamos el valor k-esimo del vector ltmp en el vector final
+                        vecFinal.append(ltmp[k])
+                        i = 0
+                        k += 1
+                    i += 1
+            else:
+                i += 1
+        return(vecFinal)
+    
+    def genData(self,h:int,tau:int,m:int,n:int,nameCol):    
+        """genData Genera datos siguiendo una mascara definida
+        
+        Parameters
+        ----------
+        h : int
+            Tamaño del hueco central
+        tau : int
+            Frecuencia de aparición de unos
+        m : int 
+            Cantidad de unos esperados
+        """        
+        j = 0; aux = 0
+        sl = SortedList()
+        msk = np.array(getMask(h,tau,m))
+        prom = 0
+<<<<<<< HEAD:cmpy.py
+        nvl = np.zeros(len(self.dt.x_i))
+        lista = self.getHole(h,tau,m,nameCol)
+        ix = np.where(np.asarray(msk) == 1)
+=======
+        nvl = self.dt.x_i.copy()
+        lista = self.getHole(h,tau,m,nameCol)
+>>>>>>> 6c24b1b23a6686c255616d26e629eb74772cb78d:cmpy
+        for i in lista:
+            v1 = np.array(self.dt.x_i[i - m:i+h+m])
+            for j in range(m,self.dt.shape[0] - (h+m+1)):
+                v2 = np.array(self.dt.x_i[j-m:j+h+m])
+<<<<<<< HEAD:cmpy.py
+                if not np.any(np.isnan(v2[ix])) or i == j:
+                    V = v1 - v2
+                    V = V**2
+                    Vmsk = V*msk
+                    Vmsk = np.nansum(Vmsk)
+                    tmp = (Vmsk,j)
+                    sl.add(tmp)
+            for item in range(n):
+                prom += self.dt.x_i[sl[item][1]]
+
+            nvl[i] = prom/n
+
+        self.add_col("Rec_{}_{}_{}".format(h,tau,m),nvl)
+#####################Ejecución
+=======
+                V = v1 - v2
+                V = V**2
+                Vmsk = V*msk
+                Vmsk = np.nansum(Vmsk)
+                tmp = (Vmsk,j)
+                sl.add(tmp)
+            for item in range(n):
+                prom += self.dt.x_i[sl[item][1]]
+                
+            print(prom)
+            print(prom/n,i)
+            nvl[i] = prom/n
+
+        self.add_col("Rec_{}_{}_{}".format(h,tau,m),nvl)
+#####################Ejecución
+
+import lorenz
+import datetime
+
+lorenz = lorenz.generateLorenz(1000)
+dInicial = datetime.datetime(2014,1,1)
+dFinal = datetime.datetime(2019,12,31)
+dateLorenz = [(dInicial + datetime.timedelta(days=d)).strftime("%Y-%m-%d") for d in range((dFinal - dInicial).days + 1)]
+dateLorenz = dateLorenz[:len(lorenz)]
+
+
+
+
+lorenzP = toReconst()
+lorenzP.read_dt("Lorenz",lorenz,dateLorenz)
+
+strCol = "userNull"
+
+lorenzP.genFail(strCol,np.random.geometric(p=0.35, size=10000),np.random.geometric(p=0.25, size=10000))
+
+lorenzP.genData(1,1,1,10,strCol)
+>>>>>>> 6c24b1b23a6686c255616d26e629eb74772cb78d:cmpy
